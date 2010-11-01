@@ -1,0 +1,44 @@
+{% extends "site_base.html" %}
+
+{% block head_title %}Run a Query{% endblock %}
+{% block head_links %}
+<a href="http://localhost:8000/">Back to Main Page</a>
+{% endblock %}
+
+{% block head_extra %}
+A database is present. You can query it with the form below.
+<br>
+Use Python API compatible syntax with attribute followed by logical followed by query element.<br>
+Available logicals: "contains", "<", ">", "and"
+e.g. [year > 1950] or [title contains "Plastic" and author_list contains "Costa"]<br>
+Searchable Column names in database are "author_list", "journal", "volume" (integer),"pages","year" (integer), "title", and "collection" 
+{% endblock %}
+
+
+{% block body %}
+    <br>
+    <form method="POST" action=".">{% csrf_token %}
+		Query String:
+		<input type="text" name="query" size="75"/>
+		<input type="submit" value="Query!" />
+	</form>
+	
+	{% if query_matches %}
+		<ul>
+		{% for match in query_matches %}
+			<li>author_list: {{match.author_list}}<br>
+			journal: {{match.journal}}<br>
+			volume: {{match.volume}}<br>
+			pages: {{match.pages}}<br>
+			year: {{match.year}}<br>
+			title: {{match.title}}<br>
+			collection: {{match.collection}}<br>
+			<br>
+			</li>
+		{% endfor %}
+		</ul>
+	{% else %}
+		<p>No matches available. Did you run a query? Is your syntax correct?</p>
+	{% endif %}
+
+{% endblock %}

@@ -1,0 +1,208 @@
+#
+# BEGIN: Importing Data
+#
+#
+import cPickle as c
+h = c.load(open('variable_lightcurves.pickle'))
+k = h.keys()
+x = h.values()
+
+# NOTE:
+# h is a dictionary of 1392 light curves of variables stars.  
+#  A "light curve" is the flux versus time for a source.
+#  For each source, we have time, data, errr (on data) as well as the best-fit
+#  period and source type (determined externally).
+
+typs = array([x['source_type'] for x in h.values()])
+>>> unique( typs )
+array(['BCEP', 'CLCEP', 'CP', 'DMCEP', 'DSCUT', 'EA', 'EB', 'ELL', 'EW',
+       'GDOR', 'HAEBE', 'LBOO', 'LBV', 'MIRA', 'PTCEP', 'PVSG', 'RRAB',
+       'RRC', 'RRD', 'RVTAU', 'SPB', 'SR', 'SXPHE', 'TTAU', 'WR', 'XB',
+       'unkown'], dtype='|S6')
+
+# let's pick a classical cepheid variable star ('CLCEP') to begin
+j = k[where(typs=='CLCEP')[0][0]]
+>>> j
+'148302'
+
+clf(); errorbar (h[j]['time'],h[j]['data'],yerr=h[j]['error'],linestyle='None',marker='o');
+xlabel ("Time [days]"); ylabel("Flux (magnitude)")
+
+p = h[j]['period']
+>>> p
+4.3722286173471456
+
+tt= h[j]['time']
+t = tt % p; y = h[j]['data']; dy = h[j]['error']
+
+clf(); errorbar(hstack((t,t+p)),hstack((y,y)),yerr=hstack((dy,dy)),linestyle='None',marker='o')
+xlabel ("Folded Time [days]"); ylabel("Flux (magnitude)")
+
+
+#
+# BASIC SUMMARY STATISTICS
+#  (e.g., what is the median source brightness and source variability?)
+#
+>>> median(y)
+7.7309999999999999
+>>> std(y)
+0.21258759593623042
+>>> y.min()
+7.3315000000000001
+>>> y.max()
+8.0494000000000003
+
+
+#
+# CHARACTERIZING THE RESIDUALS, using polynomials in numpy, also scipy.stats
+# is there variability superposed on top of the periodic variation?
+#
+from scipy.signal import medfilt
+s = t.argsort()
+ys = medfilt(y[s],9)
+plot (hstack((t[s],t[s]+p)),hstack((ys,ys)))
+>>> std(y[s]-ys)
+0.017874213706446821
+
+# a different way
+res2 = polyfit(t,y,2)
+clf(); errorbar (t,y,yerr=dy,marker='o',linestyle='None');
+plot( t[s],polyval(res2,t[s]))
+xlabel ("Folded Time [days]"); ylabel("Flux (magnitude)")
+>>> std(polyval(res2,t[s])-y[s])
+>>> for i in range(10):
+...  res = polyfit(t,y,2+2*i)
+...  print ("Polynomial Degree %d, Scatter %.3f") % (2+2*i,std(polyval(res,t[s])-y[s]))
+ Polynomial Degree 2, Scatter 0.081
+ Polynomial Degree 4, Scatter 0.065
+ Polynomial Degree 6, Scatter 0.031
+ Polynomial Degree 8, Scatter 0.030
+ Polynomial Degree 10, Scatter 0.025
+ Polynomial Degree 12, Scatter 0.023
+ Polynomial Degree 14, Scatter 0.022
+ Polynomial Degree 16, Scatter 0.020
+ Polynomial Degree 18, Scatter 0.020
+ Polynomial Degree 20, Scatter 0.019
+
+res = polyfit(t,y,10)
+plot( t[s],polyval(res,t[s]))
+
+resid = polyval(res,t)-y
+clf(); a=hist( resid,bins=40); xlabel("Residuals");
+# looks pretty Gaussian
+mr = resid.mean(); sr = std(resid)
+s=resid.argsort()
+plot( resid[s],exp(-0.5*((resid[s]-mr)/sr)**2)*6,color='red')
+
+from scipy import stats
+
+m,v,s,k = stats.t.stats(10,moments='mvsk')
+n, (smin,smax), sm, sv, ss, sk = stats.describe(resid)
+
+>>> print 'distribution:'
+distribution:
+>>> sstr = 'mean = %6.4f, variance = %6.4f, skew = %6.4f, kurtosis = %6.4f'
+>>> print sstr %(m, v, s ,k)
+mean = 0.0000, variance = 1.2500, skew = 0.0000, kurtosis = 1.0000
+>>> print 'sample:      ',
+sample:
+>>> print sstr %(sm, sv, ss, sk)
+mean = -0.0000, variance = 0.0007, skew = -0.7646, kurtosis = 1.2598
+
+
+# test for Normalcy
+stats.kstest((resid-mr)/sr,'norm')
+(0.081857959105536282, 0.42815261217584499)
+# 2nd element is p-value: can't reject Normal distribution
+stats.ttest_1samp(resid,mr)
+(0.0, 1.0)
+
+
+#
+# FITTING THE DATA 2 (ordinary least squares), known period scipy.optimize.leastsq
+#
+def model(par):
+  return par[0] + par[1]*sin(2*pi*t/p) + par[2]*cos(2*pi*t/p)
+
+sys_err=0.02
+dy0 = sqrt(dy**2+sys_err**2)
+def resid(par):
+  return (model(par)-y)/dy0
+
+from scipy.optimize import leastsq
+
+res = leastsq(resid,[y.mean(),1,0.])
+mdl = model(res[0])
+s = t.argsort()
+clf(); errorbar (t,y,yerr=dy,linestyle='None',marker='o'); plot(t[s],mdl[s]); xlabel("Folded Time [days]"); ylabel("Flux (magnitude)");
+dof=3
+print ( ((mdl-y)/dy0)**2 ).sum()/(len(t)-dof)
+14.3236577219
+
+#
+# now allow for a harmonic
+#
+
+def model(par):
+  return par[0] + par[1]*sin(2*pi*t/p) + par[2]*cos(2*pi*t/p) + par[3]*sin(4*pi*t/p) + par[4]*cos(4*pi*t/p)
+
+res = leastsq(resid,[y.mean(),1,0.,0.,0.])
+mdl = model(res[0])
+s = t.argsort()
+plot(t[s],mdl[s]);
+dof=5.
+chi2_nu = ( ((mdl-y)/dy0)**2 ).sum()/(len(t)-dof)
+>>> chi2_nu
+4.34609945419
+
+#
+# now allow for 5 harmonics
+#
+
+def model(par):
+  modl = par[0] + par[1]*sin(2*pi*t/p) + par[2]*cos(2*pi*t/p)
+  for i in range(5):
+    modl += par[3+2*i]*sin(2*pi*t/p*(i+2)) + par[4+2*i]*cos(2*pi*t/p*(i+2))
+  return modl
+
+
+res = leastsq(resid,r_[y.mean(),1.,[0]*11])
+mdl = model(res[0])
+s = t.argsort()
+plot(t[s],mdl[s]);
+dof=13.
+chi2_nu = ( ((mdl-y)/dy0)**2 ).sum()/(len(t)-dof)
+>>> chi2_nu
+1.23934540674
+
+
+#
+# FITTING THE DATA 3 (ordinary least squares), period unknown: example numpy program lomb_scargle_numpy.py
+#
+from lomb_scargle_numpy import lomb
+>>> lomb?
+Definition:     lomb(time, signal, wt, freqin)
+
+wt = 1./dy0**2
+#create a frequency search grid
+tt -= tt.min()
+fmax = 20.
+df = 0.1/tt.max()
+fmin = 10*df
+
+freq = linspace(fmin,fmax,(fmax-fmin)/df)
+>>> len(freq)
+231107
+
+time psd = lomb(time,y,wt,freq)
+>>> 1./freq[psd.argmax()]
+4.3722286173471456
+>>> h[j]['period']
+4.3722286173471456
+
+clf(); plot (1./freq,psd); semilogx(); xlabel("Period [days]"); ylabel("Power"); xlim((1/fmax,1/fmin))
+
+# Note: you also have lomb_scargle_c.py, which does the same thing as lomb_scargle_numpy.py, but should be considerably faster because it usees C code.
+# try 
+from lomb_scargle_c import lomb
+# and repeat the above

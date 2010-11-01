@@ -1,0 +1,24 @@
+{% extends "site_base.html" %}
+
+{% block head_title %}Insert a Collection{% endblock %}
+{% block head_extra %}A database is present. Please insert a new collection by uploading a Bibtex file with the form below.{% endblock %}
+
+{% block head_links %}
+<a href="http://localhost:8000/">Back to Main Page</a>
+{% endblock %}
+
+{% block body %}
+	<br>
+    <form method="POST" action="." enctype="multipart/form-data">{% csrf_token %}
+		Collection Name:
+		<input type="text" name="name" />
+		<input type="file" name="data_file" size="40">
+		{% if current_file %}
+			file_processed
+		{% else %}
+			No file selected
+		{% endif %}
+		<input type="submit" value="Upload!" />
+	</form>
+	
+{% endblock %}

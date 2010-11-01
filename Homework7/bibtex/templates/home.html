@@ -1,0 +1,22 @@
+{% extends "site_base.html" %}
+
+{% block head_title %}Main Page{% endblock %}
+{% block head_links %}
+<a href="http://localhost:8000/insert_collection.html/">Insert a Collection</a>--
+<a href="http://localhost:8000/query.html/">Run a Query</a> 
+{% endblock %}
+{% block head_extra %}A database is present. These are your available collections:{% endblock %}
+
+
+{% block body %}
+    {% if current_collections %}
+		<ul>
+		{% for collection in current_collections %}
+			<li>{{collection.name}}</li>
+		{% endfor %}
+		</ul>
+	{% else %}
+		<p>No collections are available.</p>
+	{% endif %}
+
+{% endblock %}

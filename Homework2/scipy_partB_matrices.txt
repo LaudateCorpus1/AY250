@@ -1,0 +1,196 @@
+#
+# Part 2: WORKING WITH BIGGER DATA SETS, MATRICS, ETC.
+#   using statistics compiled for all variable stars in variable_lightcurves.pickle
+#
+import cPickle as c
+h = c.load(open('periodic_lightcurve_features.pickle'))
+
+# h is a list of dictionaries containing the results of harmonic fits to the variables stars
+# Following Debosscher 2007 (A&A, 475, 1159), I pulled 3 characteristic frequencies out
+#  of each light curve along with summary statistics on the harmonic frequencies and amplitudes
+xx = h.values()
+
+
+#
+# NOW PULL IN ALL THE DATA
+#
+src_typ = array([y['typeN'] for y in xx])
+nclass = src_typ.max()+1
+
+# lookup between src_typ (int) and name (string)
+src_typ_dict={}
+for y in xx:
+  src_typ_dict[y['typeN']] = y['type']
+
+
+# dependent variables
+f1 = log10(array([y['freq1'] for y in xx]))
+f1s = log10(array([y['freq1_signif'] for y in xx]))
+f2 = log10(array([y['freq2'] for y in xx]))
+f2s = log10(array([y['freq2_signif'] for y in xx]))
+f3 = log10(array([y['freq3'] for y in xx]))
+f3s = log10(array([y['freq3_signif'] for y in xx]))
+data = vstack((f1,f1s,f2,f2s,f3,f3s)).T
+
+f1_harm = log2(array([y['freq1_harmonics'] for y in xx]))
+f2_harm = log2(array([y['freq2_harmonics'] for y in xx]))
+f3_harm = log2(array([y['freq3_harmonics'] for y in xx]))
+f1_phase = array([y['freq1_phases'] for y in xx])
+f2_phase = array([y['freq2_phases'] for y in xx])
+f3_phase = array([y['freq3_phases'] for y in xx])
+
+# put this all in a matrix
+data = hstack((data,f1_harm,f2_harm,f3_harm,f1_phase[:,1:],f2_phase,f3_phase))
+nx,ny = data.shape
+
+#regularize the data a bit
+dm, ds = data.mean(axis=0), std(data,axis=0)
+data -= dm; data /= ds
+
+#take a look at data
+imshow(data,aspect='auto'); xlabel("Dependent Variables (features)"); ylabel("Instance");
+
+# now we have a matrix data, can do basic matrix operations
+>>> sp.*eig (TAB)
+eig       eigh      eigvals   eigvalsh
+from scipy.linalg import eigvals
+>>> eig(data)
+...barf...
+ValueError: expected square matrix
+>>> eigvals(data[0:ny,:])
+array([-7.89652634+0.j        ,  6.18325419+0.j        ,
+       -3.13390515+3.47272191j, -3.13390515-3.47272191j,
+       ...
+
+
+
+#
+# sort the data classes based on frequency_1 (define a new index for each source class)
+#
+mf1 = zeros(nclass)
+for i in range(nclass):
+  j=where(src_typ==i)[0]
+  mf1[i] = median( data[j,0] )
+
+
+s=mf1.argsort()
+src_typ_switch = zeros(nclass,dtype='int32')
+src_typ_switch[s] = arange(nclass,dtype='int32')
+src_typ_dict1={}
+for i in range(nclass):
+    src_typ_dict1[i] = src_typ_dict[s[i]]
+
+src_typ1 = src_typ_switch[src_typ]
+
+#
+# make a plot of source class versus mean periodic frequency of that class
+#
+res = hist(src_typ1,arange(nclass+1)); clf()  # just to get class memberships
+scatter (10**(mf1[s]*ds[0]+dm[0]),arange(nclass),c=(arange(nclass))); semilogx();
+
+# now make a nice label
+k,v = array(src_typ_dict1.keys()), array(src_typ_dict1.values())
+v1 = v.copy().astype('S12')
+for i in xrange(len(v)):
+    v1[i] = ( "%s [%d]" % (v[i],res[0][i]) )
+
+
+ii=k.argsort()   # just to be sure; dictionaries aren't generally ordered
+yt=yticks(arange(nclass),v1[ii],rotation=0,fontsize=14); ylim((-1,nclass+1));
+xlabel("Frequency_1 [cycles/day]"); xlim((2.e-3,20))
+
+
+
+#
+# SUPERVISED CLASSIFICATION BY REGRESSION
+# now let's try to see if we can predict the source class using data
+#   first, let's try regression: find y such that data*y = src_typ1 on average
+#
+from scipy.linalg import lstsq
+
+x=1.*src_typ1; x /= x.max(); x-=x.mean()
+
+res = lstsq(data,x);
+pred = dot(data,res[0]);
+resid = x-pred
+
+# make a plot
+clf(); plot (x,pred,'o'); plot([-0.8,0.8],[-0.8,0.8])
+xlim((-0.8,0.8)); ylim((-0.8,0.8)); xlabel('Class'); ylabel('Prediction')
+# how good are we doing?
+std(resid)
+
+# which data vectors are doing the work?
+clf(); plot(abs(res[0]),'o'); plot(0*res[0]+0.05); xlabel('Feature (x)'); ylabel('Importance (y)'); xlim((-1,30))
+
+j=where(abs(res[0])>0.05)[0]
+j
+# 0 1 6 14
+# f1, f1s, amplitude of first frequency first harmonic, #  amplitude of 3rd frequency dominant
+
+# plot the two most useful features
+clf(); scatter (data[:,0]*ds[0]+dm[0],data[:,6]*ds[6]+dm[6],c=(x)); xlabel("log10(Frequency_1)");
+ylabel("log2(Amp_1)");
+
+# now try the regression with just those 4
+data1 = data[:,j]
+
+res1 = lstsq(data1,x);
+pred1 = dot(data1,res1[0])
+resid1 = x-pred1
+# make a plot
+clf(); plot (x,pred,'o'); plot([-0.8,0.8],[-0.8,0.8]); plot (x,pred1,'o')
+xlim((-0.8,0.8)); ylim((-0.8,0.8)); xlabel('Class'); ylabel('Prediction')
+
+# and how good are we doing? (about the same as before)
+std(resid1)
+
+
+#
+# UNSUPERVISED CLASSIFICATION WITH KMEANS
+#
+
+from scipy.cluster.vq import vq,kmeans
+clf(); scatter (data[:,0]*ds[0]+dm[0],data[:,6]*ds[6]+dm[6],c=(x)); xlabel("log10(Frequency_1)"); ylabel("log2(Amp_1)");
+
+groups=5
+# 2nd argument to kmeans is a guess for the centers of each of group
+answer,dist = kmeans(data[:,[0,6]], data[0:groups,[0,6]])
+plot (answer[:,0]*ds[0]+dm[0],answer[:,1]*ds[6]+dm[6],'o',ms=30)
+
+
+
+# now try to do a full classification into nclass = 27 computer-defined classes, and compare with known classes
+answer,dist = kmeans(data, data[0:nclass])
+# answer[0] is centroid for 0th class, etc.
+
+# calculate distance for each data point from each class centroid
+dist = empty((nx,nclass))
+for i in xrange(nclass):
+  dist[:,i] = sqrt( ( (data - answer[i])**2 ).sum(axis=1) )
+
+dmin = empty(nx)
+for i in xrange(nx):
+  dmin[i] = dist[i,:].argmin()
+
+
+# what's the mapping between kmeans class and known class? 
+#   (use whichever pairing has the smallest mean distance, vector ii)
+# find that pairing and determine the fractional class associations
+
+conf_matr = zeros((nclass,nclass))
+ii = empty(nclass)
+# for each known class
+for i in xrange(nclass):
+    j=where(src_typ1==[i])[0]
+    res = hist(dmin[j],bins=arange(nclass+1))
+    yout = res[0]*1./res[0].sum()
+    ii[i] = yout.argmax()
+    conf_matr[i,res[1][:-1]] = yout
+
+
+# make a plot
+jj = ii.argsort()
+clf(); imshow( conf_matr[jj].T)
+plot (arange(nclass),arange(nclass),color='yellow')
+xlim((-0.5,nclass-0.5)); ylim((-0.5,nclass-0.5)); xlabel("Known Class Index"); ylabel("Kmeans Class Index")
