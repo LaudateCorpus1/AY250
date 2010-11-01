@@ -1,0 +1,11 @@
+commit ce2b9a06348676dd41513da19d021f94fc5a632f
+Author: John Long <jlong29@gmail.com>
+Date:   Mon Nov 1 10:03:43 2010 -0700
+
+    All datafiles as of 11/1/2010
+
+commit 278adadc89d341d49819edb98ba212f3174a691d
+Author: John Long <jlong29@gmail.com>
+Date:   Mon Nov 1 09:52:27 2010 -0700
+
+    first commit
